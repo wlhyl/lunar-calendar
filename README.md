@@ -1,29 +1,35 @@
-# golang编写的公历转农历库
-## 单元测试
-* 测试环境准备
-os：Rocky Linux 8
-```bash
-yum --enablerepo=powertools install glibc-static
-```
+
+# 单元测试
+**注意：**以下测试在linux中执行。
 * 下载瑞士星历表，并编译
-```bash
+```
 mkdir /tmp/swe
 cd /tmp/swe
-wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.02.tar.gz
-tar xvzf swe_unix_src_2.10.02.tar.gz 
-cd swe
-make libswe.a
+wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.03.tar.gz
+tar xvzf swe_unix_src_2.10.03.tar.gz
+cd src
+make libswe.so
 ```
+
 * 下载瑞士星历表文件
-```bash
+```
+cd /tmp/swe
+
 wget https://www.astro.com/ftp/swisseph/ephe/semo_18.se1
 wget https://www.astro.com/ftp/swisseph/ephe/semom48.se1
 wget https://www.astro.com/ftp/swisseph/ephe/sepl_18.se1
 wget https://www.astro.com/ftp/swisseph/ephe/seplm48.se1
 ```
+* 运行测试
+**注意：**瑞士星历表不支持多线程
+```
+EPHE_PATH=/tmp/swe RUSTFLAGS=-L/tmp/swe/src LD_LIBRARY_PATH=/tmp/swe/src cargo test   -- --test-threads=1
+```
 
-* 单元测试
-使用静态编译，以免测试时提示找不到libsw.so
-```bash
-EPHE_PATH=`pwd`  CGO_LDFLAGS="-L/tmp/swe/src -lswe -lm -ldl -static" go test
+# 使用
+在rust项目中添加以下依赖
+```
+[dependencies]
+...
+lunar_calendar = { git = "https://github.com/wlhyl/lunar-calendar.git", branch = "rust" }
 ```
