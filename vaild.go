@@ -2,6 +2,7 @@ package lunarcalendar
 
 import (
 	"fmt"
+
 	"github.com/mshafiee/swephgo"
 )
 
@@ -61,7 +62,7 @@ func vaildDateTime(year, month, day, hour, minute, second int) error {
 	dhour := float64(hour) + float64(minute)/60.0 + float64(second)/3600.0
 	dyear := year
 	if year < 0 {
-		dyear = year
+		dyear = year + 1
 	}
 	tjd := make([]float64, 1)
 	if err := swephgo.DateConversion(dyear, month, day, dhour, calendar, tjd); err == swephgo.Err {
