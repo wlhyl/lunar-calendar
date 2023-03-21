@@ -5,7 +5,11 @@ mod utils;
 mod vaild;
 
 use constdef::{DAY_NAMES, MONTH_NAMES, SOLAR_TERM_NAMES};
-use ganzhiwuxin::{DiZhi, GanZhi, TianGan};
+use ganzhiwuxin::{
+    DiZhi::*,
+    GanZhi::{self, *},
+    TianGan::*,
+};
 use mathutl::{get_ut8_date_time_from_jd, mod180, newton_iteration};
 use swe::{
     swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path, swe_utc_time_zone,
@@ -27,16 +31,13 @@ pub fn lunar_calendar(
 ) -> Result<LunarCalendar, String> {
     let mut lunar_calendar = LunarCalendar {
         is_lean_year: false,
-        lunar_year: GanZhi::new(TianGan::new("甲").unwrap(), DiZhi::new("子").unwrap()).unwrap(),
+        lunar_year: 甲子,
         lunar_month: "".to_string(),
         lunar_day: "".to_string(),
-        lunar_year_gan_zhi: GanZhi::new(TianGan::new("甲").unwrap(), DiZhi::new("子").unwrap())
-            .unwrap(),
-        lunar_month_gan_zhi: GanZhi::new(TianGan::new("甲").unwrap(), DiZhi::new("子").unwrap())
-            .unwrap(),
-        lunar_day_gan_zhi: GanZhi::new(TianGan::new("甲").unwrap(), DiZhi::new("子").unwrap())
-            .unwrap(),
-        time_gan_zhi: GanZhi::new(TianGan::new("甲").unwrap(), DiZhi::new("子").unwrap()).unwrap(),
+        lunar_year_gan_zhi: 甲子,
+        lunar_month_gan_zhi: 甲子,
+        lunar_day_gan_zhi: 甲子,
+        time_gan_zhi: 甲子,
         solar_term_first: SolarTerm {
             name: "".to_string(),
             year: 0,
@@ -169,23 +170,23 @@ pub fn lunar_calendar(
 
     // 计算农历年
     if current_jd < first_lunar_month.jd {
-        lunar_calendar.lunar_year = GanZhi::default().plus(year as isize - 1 - 1864);
+        lunar_calendar.lunar_year = 甲子.plus(year as isize - 1 - 1864);
     } else {
-        lunar_calendar.lunar_year = GanZhi::default().plus(year as isize - 1864)
+        lunar_calendar.lunar_year = 甲子.plus(year as isize - 1864)
     }
 
     // 计算农历日干支
     // 计算日柱, 以2017年4月7日，甲子日为起点
     let d = current_jd - swe_julday(2017, 4, 6, 16.0, Calendar::Gregorian);
     let d = d.floor() as isize;
-    lunar_calendar.lunar_day_gan_zhi = GanZhi::default().plus(d);
+    lunar_calendar.lunar_day_gan_zhi = 甲子.plus(d);
 
     // 年干支，以立春换年
     // solarTermJds[3]是立春
     if current_jd < solar_term_jds[3] {
-        lunar_calendar.lunar_year_gan_zhi = GanZhi::default().plus(year as isize - 1 - 1864);
+        lunar_calendar.lunar_year_gan_zhi = 甲子.plus(year as isize - 1 - 1864);
     } else {
-        lunar_calendar.lunar_year_gan_zhi = GanZhi::default().plus(year as isize - 1864);
+        lunar_calendar.lunar_year_gan_zhi = 甲子.plus(year as isize - 1864);
     }
 
     // 计算月柱
@@ -209,58 +210,47 @@ pub fn lunar_calendar(
 
     let month_num = (swe_degnorm(xx[0] - 255.0) / 30.0).floor() as usize;
 
-    let month_di_zhi = DiZhi::default().plus(month_num.try_into().unwrap());
+    let month_di_zhi = 子.plus(month_num.try_into().unwrap());
 
     // 求月柱，按节气换年，不能使用农历正月初一换年，如果 2017年1月7日，节气年、农历年都是丙申，
     // 不能以monthNum < 2，将农历的丙申 - 1
-    let year_gan = lunar_calendar.lunar_year_gan_zhi.gan.clone();
-    // 寅 = 子 + 2
-    let 寅 = DiZhi::default().plus(2);
-    if year_gan == Default::default() || year_gan == TianGan::default().plus(5) {
-        // 丙 = 甲 + 2
+    let year_gan = lunar_calendar.lunar_year_gan_zhi.gan();
+    if year_gan == 甲 || year_gan == 己 {
         let n = month_di_zhi.minus(&寅);
-        let g = TianGan::default().plus(2).plus(n as isize);
-        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(g, month_di_zhi).unwrap();
-    } else if year_gan == TianGan::default().plus(1) || year_gan == TianGan::default().plus(6) {
-        // 戊 = 甲 + 4
+        let g = 丙.plus(n as isize);
+        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(&g, &month_di_zhi).unwrap();
+    } else if year_gan == 乙 || year_gan == 庚 {
         let n = month_di_zhi.minus(&寅);
-        let g = TianGan::default().plus(4).plus(n as isize);
-        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(g, month_di_zhi).unwrap();
-    } else if year_gan == TianGan::default().plus(2) || year_gan == TianGan::default().plus(7) {
-        // 庚 = 甲 + 6
+        let g = 戊.plus(n as isize);
+        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(&g, &month_di_zhi).unwrap();
+    } else if year_gan == 丙 || year_gan == 辛 {
         let n = month_di_zhi.minus(&寅);
-        let g = TianGan::default().plus(6).plus(n as isize);
-        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(g, month_di_zhi).unwrap();
-    } else if year_gan == TianGan::default().plus(3) || year_gan == TianGan::default().plus(8) {
-        // 壬 = 甲 + 8
+        let g = 庚.plus(n as isize);
+        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(&g, &month_di_zhi).unwrap();
+    } else if year_gan == 丁 || year_gan == 壬 {
         let n = month_di_zhi.minus(&寅);
-        let g = TianGan::default().plus(8).plus(n as isize);
-        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(g, month_di_zhi).unwrap();
+        let g = 壬.plus(n as isize);
+        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(&g, &month_di_zhi).unwrap();
     } else {
-        // 甲 = 甲 + 0
+        //戊，癸
         let n = month_di_zhi.minus(&寅);
-        let g = TianGan::default().plus(n as isize);
-        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(g, month_di_zhi).unwrap()
+        let g = 甲.plus(n as isize);
+        lunar_calendar.lunar_month_gan_zhi = GanZhi::new(&g, &month_di_zhi).unwrap()
     }
 
     // 计算时柱, (hour + 1) / 2 = 时辰数-1, 0点子时=1,丑时=2,辰时=3... 亥时=11,23点=12
     // lunarCalendar.TimeGanZhi = func() ganzhiwuxin.GanZhi {
     let n = (hour + 1) / 2;
 
-    let 丙子 = GanZhi::default().plus(12);
-    let 戊子 = 丙子.plus(12);
-    let 庚子 = 戊子.plus(12);
-    let 壬子 = 庚子.plus(12);
+    let day_gan = lunar_calendar.lunar_day_gan_zhi.gan();
 
-    let day_gan = lunar_calendar.lunar_day_gan_zhi.gan.clone();
-
-    if day_gan == TianGan::default() || day_gan == TianGan::default().plus(5) {
-        lunar_calendar.time_gan_zhi = GanZhi::default().plus(n.into());
-    } else if day_gan == TianGan::default().plus(1) || day_gan == TianGan::default().plus(6) {
+    if day_gan == 甲 || day_gan == 己 {
+        lunar_calendar.time_gan_zhi = 甲子.plus(n.into());
+    } else if day_gan == 乙 || day_gan == 庚 {
         lunar_calendar.time_gan_zhi = 丙子.plus(n.into());
-    } else if day_gan == TianGan::default().plus(2) || day_gan == TianGan::default().plus(7) {
+    } else if day_gan == 丙 || day_gan == 辛 {
         lunar_calendar.time_gan_zhi = 戊子.plus(n.into());
-    } else if day_gan == TianGan::default().plus(3) || day_gan == TianGan::default().plus(8) {
+    } else if day_gan == 丁 || day_gan == 壬 {
         lunar_calendar.time_gan_zhi = 庚子.plus(n.into());
     } else {
         lunar_calendar.time_gan_zhi = 壬子.plus(n.into());
