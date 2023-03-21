@@ -5,7 +5,7 @@ mod utils;
 mod vaild;
 
 use constdef::{DAY_NAMES, MONTH_NAMES, SOLAR_TERM_NAMES};
-use ganzhiwuxin::{
+use ganzhiwuxing::{
     DiZhi::*,
     GanZhi::{self, *},
     TianGan::*,

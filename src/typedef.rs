@@ -1,4 +1,4 @@
-use ganzhiwuxin::GanZhi;
+use ganzhiwuxing::GanZhi;
 
 // 农历月信息
 #[derive(Default, Debug, Clone)]
