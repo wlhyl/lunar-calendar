@@ -5,9 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+serde = ["dep:serde", "ganzhiwuxing/serde"]
+
 [dependencies]
 ganzhiwuxing = { git = "https://github.com/wlhyl/ganzhiwuxin.git", branch = "rust" }
 rust-swe = { git = "https://github.com/wlhyl/rust-swe.git" }
+
+serde = { version = "*", features = ["derive"], optional = true }
 
 [dev-dependencies]
 dotenv = "0.15.0"

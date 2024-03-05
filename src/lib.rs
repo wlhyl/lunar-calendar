@@ -12,10 +12,12 @@ use ganzhiwuxing::{
 };
 use mathutl::{get_ut8_date_time_from_jd, mod180, newton_iteration};
 use swe::{
-    swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path, swe_utc_time_zone,
-    Calendar, Planet,
+    swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path, swe_utc_time_zone, Body,
+    Calendar,
 };
-use typedef::{LunarCalendar, LunarMonth, SolarTerm};
+
+use typedef::LunarMonth;
+pub use typedef::{LunarCalendar, SolarTerm};
 use utils::{calc_leap_month, get15_lunar_month_jds, get15_new_moon_jds, get25_solar_term_jds};
 use vaild::vaild_date_time;
 
@@ -198,7 +200,7 @@ pub fn lunar_calendar(
 
     swe_set_ephe_path(ephe_path);
 
-    let xx: [f64; 6] = match swe_calc_ut(current_jd, Planet::SUN, Default::default()) {
+    let xx: [f64; 6] = match swe_calc_ut(current_jd, &Body::SeSun, Default::default()) {
         Ok(xx) => xx,
         Err(e) => {
             swe_close();
@@ -260,7 +262,7 @@ pub fn lunar_calendar(
     let solar_term_jd0 = newton_iteration(current_jd, |jd| {
         swe_set_ephe_path(ephe_path);
 
-        let xx: [f64; 6] = match swe_calc_ut(jd, Planet::SUN, Default::default()) {
+        let xx: [f64; 6] = match swe_calc_ut(jd, &Body::SeSun, Default::default()) {
             Ok(xx) => xx,
             Err(e) => {
                 swe_close();
@@ -285,7 +287,7 @@ pub fn lunar_calendar(
     let solar_term_jd1 = newton_iteration(solar_term_jd0 + 15.0, |jd| {
         swe_set_ephe_path(ephe_path);
 
-        let xx: [f64; 6] = match swe_calc_ut(jd, Planet::SUN, Default::default()) {
+        let xx: [f64; 6] = match swe_calc_ut(jd, &Body::SeSun, Default::default()) {
             Ok(xx) => xx,
             Err(e) => {
                 swe_close();
@@ -474,7 +476,7 @@ mod tests {
                 && solar_term.year == 2022
                 && solar_term.month == 1
                 && solar_term.day == 20
-                && solar_term.hour != 10,
+                && solar_term.hour == 10,
             "{}-{}-{} {}:{}:{} 的节是`大寒 2022-1-20 10:38:56`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -647,7 +649,7 @@ mod tests {
                 && solar_term.year == 2022
                 && solar_term.month == 1
                 && solar_term.day == 20
-                && solar_term.hour != 10,
+                && solar_term.hour == 10,
             "{}-{}-{} {}:{}:{} 的节是`大寒 2022-1-20 10:38:56`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
