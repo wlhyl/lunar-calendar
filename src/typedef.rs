@@ -3,6 +3,9 @@ use ganzhiwuxing::GanZhi;
 #[cfg(feature = "serde")]
 use serde::Serialize;
 
+#[cfg(feature = "swagger")]
+use utoipa::ToSchema;
+
 // 农历月信息
 #[derive(Default, Debug, Clone)]
 pub struct LunarMonth {
@@ -13,6 +16,7 @@ pub struct LunarMonth {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "swagger", derive(ToSchema))]
 #[derive(Debug)]
 pub struct LunarCalendar {
     /// 闰年:true
@@ -48,6 +52,7 @@ pub struct LunarCalendar {
 
 /// 节气
 #[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "swagger", derive(ToSchema))]
 #[derive(Debug)]
 pub struct SolarTerm {
     pub name: String,

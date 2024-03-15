@@ -7,12 +7,14 @@ edition = "2021"
 
 [features]
 serde = ["dep:serde", "ganzhiwuxing/serde"]
+swagger = ["dep:utoipa", "ganzhiwuxing/swagger"]
 
 [dependencies]
 ganzhiwuxing = { git = "https://github.com/wlhyl/ganzhiwuxin.git", branch = "rust" }
 rust-swe = { git = "https://github.com/wlhyl/rust-swe.git" }
 
 serde = { version = "*", features = ["derive"], optional = true }
+utoipa = { version = "*", optional = true }
 
 [dev-dependencies]
 dotenv = "0.15.0"
