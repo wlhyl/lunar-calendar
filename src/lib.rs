@@ -1,24 +1,27 @@
-mod constdef;
+mod lunar_calendar;
+mod lunar_day;
+mod lunar_month;
 mod mathutl;
-mod typedef;
+mod solar_term;
 mod utils;
 mod vaild;
 
-use constdef::{DAY_NAMES, MONTH_NAMES, SOLAR_TERM_NAMES};
 use ganzhiwuxing::{
     DiZhi::*,
     GanZhi::{self, *},
     TianGan::*,
 };
+use lunar_day::{LunarDay, DAY_NAMES};
+use lunar_month::LunarMonth;
 use mathutl::{get_ut8_date_time_from_jd, mod180, newton_iteration};
+use solar_term::SolarTerm;
 use swe::{
-    swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path, swe_utc_time_zone, Body,
-    Calendar,
+    swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_revjul, swe_set_ephe_path,
+    swe_utc_time_zone, Body, Calendar,
 };
 
-use typedef::LunarMonth;
-pub use typedef::{LunarCalendar, SolarTerm};
-use utils::{calc_leap_month, get15_lunar_month_jds, get15_new_moon_jds, get25_solar_term_jds};
+pub use lunar_calendar::LunarCalendar;
+use utils::{get15_new_moon_jds, get25_solar_term_jds};
 use vaild::vaild_date_time;
 
 /// 从公历日期得到农历日期
@@ -34,30 +37,14 @@ pub fn lunar_calendar(
     let mut lunar_calendar = LunarCalendar {
         is_lean_year: false,
         lunar_year: 甲子,
-        lunar_month: "".to_string(),
-        lunar_day: "".to_string(),
+        lunar_month: LunarMonth::正(false, 0.0),
+        lunar_day: LunarDay::初一,
         lunar_year_gan_zhi: 甲子,
         lunar_month_gan_zhi: 甲子,
         lunar_day_gan_zhi: 甲子,
         time_gan_zhi: 甲子,
-        solar_term_first: SolarTerm {
-            name: "".to_string(),
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0,
-        },
-        solar_term_second: SolarTerm {
-            name: "".to_string(),
-            year: 0,
-            month: 0,
-            day: 0,
-            hour: 0,
-            minute: 0,
-            second: 0,
-        },
+        solar_term_first: SolarTerm::冬至(0, 0, 0, 0, 0, 0),
+        solar_term_second: SolarTerm::冬至(0, 0, 0, 0, 0, 0),
     };
 
     if ephe_path == "" {
@@ -71,42 +58,134 @@ pub fn lunar_calendar(
     // 从前一年冬至所在农历开始的15个新月的jd
     let new_moon_jds = get15_new_moon_jds(solar_term_jds[0], ephe_path)?;
 
-    // 从前一年冬至所在农历月开始的15个农历月的初一的儒略日，以东八区时间为准
-    let lunar_months = get15_lunar_month_jds(new_moon_jds);
+    // 从前一年冬至所在农历月开始的15个农历月的初一的儒略日及月名，以东八区时间为准
+    // 共15个元素
+    // let lunar_months = get15_lunar_month_jds(new_moon_jds);
+    let lunar_months: Vec<_> = new_moon_jds
+        .iter()
+        .enumerate()
+        .map(|(index, &jd)| {
+            let (y, m, d, hour): (i32, i32, i32, f64) = swe_revjul(jd, Calendar::Gregorian);
+            let h = hour.floor() as i32;
+            let mi = ((hour - h as f64) * 60.0).floor() as i32;
+            let sec = ((hour - h as f64) * 60.0 - mi as f64) * 60.0;
 
-    // 计算闰月，如果有闰月，修正月的num
-    let lunar_months = calc_leap_month(
-        lunar_months,
-        solar_term_jds
+            // 将新月的jd换算到东八区
+            let (y8, m8, d8, _h8, _mi8, _sec8) = swe_utc_time_zone(y, m, d, h, mi, sec, -8.0);
+
+            // 以新月当天00:00:00为初一，计算儒略日
+            let (y8, m8, d8, h8, mi8, sec8) = swe_utc_time_zone(y8, m8, d8, 0, 0, 0.0, 8.0);
+
+            let jd = swe_julday(
+                y8,
+                m8,
+                d8,
+                h8 as f64 + mi8 as f64 / 60.0 + sec8 / 3600.0,
+                Calendar::Gregorian,
+            );
+
+            // let mut n = (index + 11) % 12;
+            // if n == 0 {
+            //     n = 12;
+            // }
+            let n = (index + 11) % 12;
+            // 如果n==0，则对应腊月
+
+            match n {
+                1 => LunarMonth::正(false, jd),
+                2 => LunarMonth::二(false, jd),
+                3 => LunarMonth::三(false, jd),
+                4 => LunarMonth::四(false, jd),
+                5 => LunarMonth::五(false, jd),
+                6 => LunarMonth::六(false, jd),
+                7 => LunarMonth::七(false, jd),
+                8 => LunarMonth::八(false, jd),
+                9 => LunarMonth::九(false, jd),
+                10 => LunarMonth::十(false, jd),
+                11 => LunarMonth::冬(false, jd),
+                _ => LunarMonth::腊(false, jd),
+            }
+
+            // LunarMonth { jd, month_name }
+            // first_day_jds[index].num = n as u8;
+            // first_day_jds[index].jd = jd;
+        })
+        .collect();
+
+    // 计算闰月，如果有闰月，修正月名
+
+    // 从前一年冬至开始的中气的儒略日,最后一中气是此年的冬至
+    // 共13个元素
+    let jds_middle_solar_term: Vec<_> = solar_term_jds
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| index % 2 == 0)
+        .map(|(_, &e)| e)
+        .collect();
+    // let jds_middle_solar_term: [f64; 13] = jds_middle_solar_term.try_into().unwrap();
+
+    // 找出区间[m_0, m_1]间的农历月
+    // 只计数[m_0, m_1)之间的月数，
+    // 此月数等于13，则置闰
+    // m_0: 前一年11月冬至jd，m_1:今年11月冬至日jd
+
+    let lunar_mont_count = lunar_months
+        .iter()
+        .filter(|x| x.jd() <= jds_middle_solar_term[12])
+        .count()
+        - 1;
+
+    // 找出第一个没有中气的农历月
+    let first_month_without_middle_solar_term_index = lunar_months[..lunar_months.len() - 1]
+        .iter()
+        .enumerate()
+        .find_map(|(index, _)| {
+            // 月中有中气:true，无中气:false
+            let mut middle_solar_term = false;
+            // len(jdsMiddleSolarTerm) - 1是因为排除今年的冬至点
+            // jdsMiddleSolarTerm 的最后一个值即是今年的冬至点
+            for j in 0..jds_middle_solar_term.len() - 1 {
+                if lunar_months[index].jd() < jds_middle_solar_term[j]
+                    && jds_middle_solar_term[j] < lunar_months[index + 1].jd()
+                {
+                    middle_solar_term = true;
+                    break;
+                }
+            }
+
+            if middle_solar_term {
+                None
+            } else {
+                Some(index)
+            }
+        });
+
+    // 置闰
+    let lunar_months = if lunar_mont_count != 12 {
+        let first_month_without_middle_solar_term_index =
+            first_month_without_middle_solar_term_index.unwrap();
+        lunar_months
             .iter()
             .enumerate()
-            .filter(|(index, _)| index % 2 == 0)
-            .map(|(_, &e)| e)
-            .collect::<Vec<f64>>()
-            .try_into()
-            .unwrap(),
-    );
+            .map(|(index, &lunar_month)| {
+                if first_month_without_middle_solar_term_index == index {
+                    lunar_month.to_pre_leap_month()
+                } else if first_month_without_middle_solar_term_index < index {
+                    lunar_month.to_pre_month()
+                } else {
+                    lunar_month
+                }
+            })
+            .collect()
+    } else {
+        lunar_months
+    };
 
     // 设置闰年
 
-    if lunar_months.iter().find(|month| month.is_leap).is_some() {
+    if lunar_months.iter().find(|month| month.is_leap()).is_some() {
         lunar_calendar.is_lean_year = true;
     }
-
-    // 得到月名
-    let lunar_months: Vec<_> = lunar_months
-        .into_iter()
-        .map(|month| LunarMonth {
-            num: month.num,
-            jd: month.jd,
-            month_name: if month.is_leap {
-                format!("闰{}月", MONTH_NAMES[month.num as usize - 1])
-            } else {
-                format!("{}月", MONTH_NAMES[month.num as usize - 1])
-            },
-            is_leap: month.is_leap,
-        })
-        .collect();
 
     /*
        将公历转换为农历
@@ -149,21 +228,21 @@ pub fn lunar_calendar(
     // 找出当前日期所在农历月
     let mut n = 0;
     for i in 0..lunar_months.len() {
-        if lunar_months[i].jd <= current_jd && current_jd < lunar_months[i + 1].jd {
+        if lunar_months[i].jd() <= current_jd && current_jd < lunar_months[i + 1].jd() {
             n = i;
             break;
         }
     }
-    lunar_calendar.lunar_month = lunar_months[n].month_name.clone();
-    let days = (current_jd - lunar_months[n].jd).floor() as usize;
-    lunar_calendar.lunar_day = DAY_NAMES[days].to_string();
+    lunar_calendar.lunar_month = lunar_months[n];
+    let days = (current_jd - lunar_months[n].jd()).floor() as usize;
+    lunar_calendar.lunar_day = DAY_NAMES[days];
 
     // 计算年
     // 根据2017年国标，农历年用干支表示
     // firstLunarMonth： 农历正月
     let first_lunar_month = if let Some(month) = lunar_months
         .iter()
-        .find(|month| month.num == 1 && !month.is_leap)
+        .find(|month| month.to_num() == 1 && !month.is_leap())
     {
         month.clone()
     } else {
@@ -171,7 +250,7 @@ pub fn lunar_calendar(
     };
 
     // 计算农历年
-    if current_jd < first_lunar_month.jd {
+    if current_jd < first_lunar_month.jd() {
         lunar_calendar.lunar_year = 甲子.plus(year as isize - 1 - 1864);
     } else {
         lunar_calendar.lunar_year = 甲子.plus(year as isize - 1864)
@@ -274,14 +353,31 @@ pub fn lunar_calendar(
     })?;
 
     let (y8, m8, d8, h8, mi8, sec8) = get_ut8_date_time_from_jd(solar_term_jd0);
-    lunar_calendar.solar_term_first = SolarTerm {
-        name: SOLAR_TERM_NAMES[month_num * 2].to_owned(),
-        year: y8,
-        month: m8,
-        day: d8,
-        hour: h8,
-        minute: mi8,
-        second: sec8.floor() as u8,
+    lunar_calendar.solar_term_first = match month_num * 2 {
+        0 => SolarTerm::大雪(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        1 => SolarTerm::冬至(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        2 => SolarTerm::小寒(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        3 => SolarTerm::大寒(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        4 => SolarTerm::立春(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        5 => SolarTerm::雨水(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        6 => SolarTerm::惊蛰(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        7 => SolarTerm::春分(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        8 => SolarTerm::清明(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        9 => SolarTerm::谷雨(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        10 => SolarTerm::立夏(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        11 => SolarTerm::小满(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        12 => SolarTerm::芒种(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        13 => SolarTerm::夏至(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        14 => SolarTerm::小暑(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        15 => SolarTerm::大暑(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        16 => SolarTerm::立秋(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        17 => SolarTerm::处暑(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        18 => SolarTerm::白露(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        19 => SolarTerm::秋分(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        20 => SolarTerm::寒露(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        21 => SolarTerm::霜降(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        22 => SolarTerm::立冬(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        _ => SolarTerm::小雪(y8, m8, d8, h8, mi8, sec8.floor() as u8),
     };
 
     let solar_term_jd1 = newton_iteration(solar_term_jd0 + 15.0, |jd| {
@@ -301,14 +397,31 @@ pub fn lunar_calendar(
     })?;
 
     let (y8, m8, d8, h8, mi8, sec8) = get_ut8_date_time_from_jd(solar_term_jd1);
-    lunar_calendar.solar_term_second = SolarTerm {
-        name: SOLAR_TERM_NAMES[month_num * 2 + 1].to_owned(),
-        year: y8,
-        month: m8,
-        day: d8,
-        hour: h8,
-        minute: mi8,
-        second: sec8.floor() as u8,
+    lunar_calendar.solar_term_second = match month_num * 2 + 1 {
+        0 => SolarTerm::大雪(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        1 => SolarTerm::冬至(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        2 => SolarTerm::小寒(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        3 => SolarTerm::大寒(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        4 => SolarTerm::立春(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        5 => SolarTerm::雨水(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        6 => SolarTerm::惊蛰(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        7 => SolarTerm::春分(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        8 => SolarTerm::清明(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        9 => SolarTerm::谷雨(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        10 => SolarTerm::立夏(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        11 => SolarTerm::小满(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        12 => SolarTerm::芒种(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        13 => SolarTerm::夏至(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        14 => SolarTerm::小暑(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        15 => SolarTerm::大暑(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        16 => SolarTerm::立秋(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        17 => SolarTerm::处暑(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        18 => SolarTerm::白露(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        19 => SolarTerm::秋分(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        20 => SolarTerm::寒露(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        21 => SolarTerm::霜降(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        22 => SolarTerm::立冬(y8, m8, d8, h8, mi8, sec8.floor() as u8),
+        _ => SolarTerm::小雪(y8, m8, d8, h8, mi8, sec8.floor() as u8),
     };
 
     Ok(lunar_calendar)
@@ -447,11 +560,11 @@ mod tests {
         // 节
         let solar_term = data.solar_term_first;
         assert!(
-            solar_term.name == "小寒"
-                && solar_term.year == 2022
-                && solar_term.month == 1
-                && solar_term.day == 5
-                && solar_term.hour == 17,
+            solar_term.name() == "小寒"
+                && solar_term.year() == 2022
+                && solar_term.month() == 1
+                && solar_term.day() == 5
+                && solar_term.hour() == 17,
             "{}-{}-{} {}:{}:{} 的节是`小寒 2022-1-5 17:13:54`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -459,24 +572,24 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
 
         // 中气
 
         let solar_term = data.solar_term_second;
         assert!(
-            solar_term.name == "大寒"
-                && solar_term.year == 2022
-                && solar_term.month == 1
-                && solar_term.day == 20
-                && solar_term.hour == 10,
+            solar_term.name() == "大寒"
+                && solar_term.year() == 2022
+                && solar_term.month() == 1
+                && solar_term.day() == 20
+                && solar_term.hour() == 10,
             "{}-{}-{} {}:{}:{} 的节是`大寒 2022-1-20 10:38:56`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -484,13 +597,13 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
     }
 
@@ -621,11 +734,11 @@ mod tests {
         // 节
         let solar_term = data.solar_term_first;
         assert!(
-            solar_term.name == "小寒"
-                && solar_term.year == 2022
-                && solar_term.month == 1
-                && solar_term.day == 5
-                && solar_term.hour == 17,
+            solar_term.name() == "小寒"
+                && solar_term.year() == 2022
+                && solar_term.month() == 1
+                && solar_term.day() == 5
+                && solar_term.hour() == 17,
             "{}-{}-{} {}:{}:{} 的节是`小寒 2022-1-5 17:13:54`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -633,23 +746,23 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
 
         // 中气
         let solar_term = data.solar_term_second;
         assert!(
-            solar_term.name == "大寒"
-                && solar_term.year == 2022
-                && solar_term.month == 1
-                && solar_term.day == 20
-                && solar_term.hour == 10,
+            solar_term.name() == "大寒"
+                && solar_term.year() == 2022
+                && solar_term.month() == 1
+                && solar_term.day() == 20
+                && solar_term.hour() == 10,
             "{}-{}-{} {}:{}:{} 的节是`大寒 2022-1-20 10:38:56`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -657,13 +770,13 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
     }
 
@@ -796,11 +909,11 @@ mod tests {
         // 节
         let solar_term = data.solar_term_first;
         assert!(
-            solar_term.name == "惊蛰"
-                && solar_term.year == 2022
-                && solar_term.month == 3
-                && solar_term.day == 5
-                && solar_term.hour == 22,
+            solar_term.name() == "惊蛰"
+                && solar_term.year() == 2022
+                && solar_term.month() == 3
+                && solar_term.day() == 5
+                && solar_term.hour() == 22,
             "{}-{}-{} {}:{}:{} 的节是`小寒 2022-3-5 22:43:34`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -808,24 +921,24 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
 
         // 中气
 
         let solar_term = data.solar_term_second;
         assert!(
-            solar_term.name == "春分"
-                && solar_term.year == 2022
-                && solar_term.month == 3
-                && solar_term.day == 20
-                && solar_term.hour == 23,
+            solar_term.name() == "春分"
+                && solar_term.year() == 2022
+                && solar_term.month() == 3
+                && solar_term.day() == 20
+                && solar_term.hour() == 23,
             "{}-{}-{} {}:{}:{} 的节是`大寒 2022-3-20 23:33:15`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -833,13 +946,13 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         )
     }
 
@@ -849,10 +962,8 @@ mod tests {
         // 测试公历转农历
         // 将2020-6-10 11:5:3转换为农历，此年闰四月
         dotenv::dotenv().ok();
-        let ephe_path = env::var("EPHE_PATH").expect(
-            "没设置 EPHE_PATH 环境变量，可在.env
-文件中设置或export EPHE_PATH=...",
-        );
+        let ephe_path = env::var("EPHE_PATH")
+            .expect("没设置 EPHE_PATH 环境变量，可在.env文件中设置或export EPHE_PATH=...");
         let year = 2020;
         let month = 6;
         let day = 10;
@@ -972,11 +1083,11 @@ mod tests {
         // 节
         let solar_term = data.solar_term_first;
         assert!(
-            solar_term.name == "芒种"
-                && solar_term.year == 2020
-                && solar_term.month == 6
-                && solar_term.day == 5
-                && solar_term.hour == 12,
+            solar_term.name() == "芒种"
+                && solar_term.year() == 2020
+                && solar_term.month() == 6
+                && solar_term.day() == 5
+                && solar_term.hour() == 12,
             "{}-{}-{} {}:{}:{} 的节是`芒种 2020-6-5 12:58:18`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -984,24 +1095,24 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
 
         // 中气
 
         let solar_term = data.solar_term_second;
         assert!(
-            solar_term.name == "夏至"
-                && solar_term.year == 2020
-                && solar_term.month == 6
-                && solar_term.day == 21
-                && solar_term.hour == 5,
+            solar_term.name() == "夏至"
+                && solar_term.year() == 2020
+                && solar_term.month() == 6
+                && solar_term.day() == 21
+                && solar_term.hour() == 5,
             "{}-{}-{} {}:{}:{} 的节是`夏至 2020-6-21 5:43:33`，而非{} {}-{}-{} {}:{}:{}",
             year,
             month,
@@ -1009,13 +1120,187 @@ mod tests {
             hour,
             minute,
             second,
-            solar_term.name,
-            solar_term.year,
-            solar_term.month,
-            solar_term.day,
-            solar_term.hour,
-            solar_term.minute,
-            solar_term.second
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
+        );
+    }
+
+    // 将2020-7-3 16:0:0转换为农历，此年闰四月，此日是闰月后的五月
+    #[test]
+    fn test_convert_to_lunar_calendar2020_7_3_16_0_0() {
+        // 测试公历转农历
+        // 将2020-7-3 16:0:0转换为农历，此年闰四月，此日是：农历五月13
+        dotenv::dotenv().ok();
+        let ephe_path = env::var("EPHE_PATH")
+            .expect("没设置 EPHE_PATH 环境变量，可在.env文件中设置或export EPHE_PATH=...");
+        let year = 2020;
+        let month = 7;
+        let day = 3;
+        let hour = 16;
+        let minute = 0;
+        let second = 0;
+        let data = lunar_calendar(year, month, day, hour, minute, second, &ephe_path);
+        assert!(data.is_ok(), "{:?}", data);
+        let data = data.unwrap();
+
+        assert!(
+            data.is_lean_year,
+            "{}-{}-{} {}:{}:{} 是闰年",
+            year, month, day, hour, minute, second
+        );
+
+        // 农历年，干支表示
+        assert_eq!(
+            data.lunar_year.to_string(),
+            "庚子",
+            "{}-{}-{} {}:{}:{} 是庚子，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.lunar_year
+        );
+
+        // 农历月，以正月、二月、......、十月、冬月、腊月表示
+        assert_eq!(
+            data.lunar_month.to_string(),
+            "五月",
+            "{}-{}-{} {}:{}:{} 五月，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.lunar_month
+        );
+
+        //  农历日，以初一、初二、……、二十九、三十表示
+        assert_eq!(
+            data.lunar_day.to_string(),
+            "十三",
+            "{}-{}-{} {}:{}:{} 是十三，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.lunar_day.to_string()
+        );
+
+        // 农历年干支，按节气换年
+
+        assert_eq!(
+            data.lunar_year_gan_zhi.to_string(),
+            "庚子",
+            "{}-{}-{} {}:{}:{} 节气年干支是庚子，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.lunar_year_gan_zhi
+        );
+
+        // 农历月干支，按节气换月
+
+        assert_eq!(
+            data.lunar_month_gan_zhi.to_string(),
+            "壬午",
+            "{}-{}-{} {}:{}:{} 月干支是壬午，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.lunar_month_gan_zhi
+        );
+
+        // 日干支
+        assert_eq!(
+            data.lunar_day_gan_zhi.to_string(),
+            "丁未",
+            "{}-{}-{} {}:{}:{} 日干支是丁未，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.lunar_day_gan_zhi
+        );
+
+        // 时干支
+        assert_eq!(
+            data.time_gan_zhi.to_string(),
+            "戊申",
+            "{}-{}-{} {}:{}:{} 时干支是戊申，而非{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            data.time_gan_zhi
+        );
+
+        // 节
+        let solar_term = data.solar_term_first;
+        assert!(
+            solar_term.name() == "芒种"
+                && solar_term.year() == 2020
+                && solar_term.month() == 6
+                && solar_term.day() == 5
+                && solar_term.hour() == 12,
+            "{}-{}-{} {}:{}:{} 的节是`芒种 2020-6-5 12:58:18`，而非{} {}-{}-{} {}:{}:{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
+        );
+
+        // 中气
+
+        let solar_term = data.solar_term_second;
+        assert!(
+            solar_term.name() == "夏至"
+                && solar_term.year() == 2020
+                && solar_term.month() == 6
+                && solar_term.day() == 21
+                && solar_term.hour() == 5,
+            "{}-{}-{} {}:{}:{} 的节是`夏至 2020-6-21 5:43:33`，而非{} {}-{}-{} {}:{}:{}",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            solar_term.name(),
+            solar_term.year(),
+            solar_term.month(),
+            solar_term.day(),
+            solar_term.hour(),
+            solar_term.minute(),
+            solar_term.second()
         );
     }
 }

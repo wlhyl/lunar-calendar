@@ -1,12 +1,6 @@
-use swe::{
-    swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_revjul, swe_set_ephe_path,
-    swe_utc_time_zone, Body, Calendar,
-};
+use swe::{swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path, Body, Calendar};
 
-use crate::{
-    mathutl::{mod180, newton_iteration},
-    typedef::LunarMonth,
-};
+use crate::mathutl::{mod180, newton_iteration};
 
 /**
  * 计算某一年冬至开始的连续25个节气
@@ -112,98 +106,4 @@ fn get_new_moon_jd(jd: f64, ephe_path: &str) -> Result<f64, String> {
         Ok(mod180(swe_degnorm(moon_posi - sun_posi)))
     };
     newton_iteration(jd, f)
-}
-
-/**
- * 计算从某年冬至开始连续15个农历月初一的儒略日
- * @param jds
- * 从冬至点所在月份开始，连续15个新月的儒略日
- */
-pub fn get15_lunar_month_jds(jds: [f64; 15]) -> [LunarMonth; 15] {
-    let mut first_day_jds: [LunarMonth; 15] = Default::default();
-
-    for (index, jd) in jds.iter().enumerate() {
-        let (y, m, d, hour): (i32, i32, i32, f64) = swe_revjul(*jd, Calendar::Gregorian);
-        let h = hour.floor() as i32;
-        let mi = ((hour - h as f64) * 60.0).floor() as i32;
-        let sec = ((hour - h as f64) * 60.0 - mi as f64) * 60.0;
-
-        // 将新月的jd换算到东八区
-        let (y8, m8, d8, _h8, _mi8, _sec8) = swe_utc_time_zone(y, m, d, h, mi, sec, -8.0);
-
-        // 以新月当天00:00:00为初一，计算儒略日
-        let (y8, m8, d8, h8, mi8, sec8) = swe_utc_time_zone(y8, m8, d8, 0, 0, 0.0, 8.0);
-
-        let jd = swe_julday(
-            y8,
-            m8,
-            d8,
-            h8 as f64 + mi8 as f64 / 60.0 + sec8 / 3600.0,
-            Calendar::Gregorian,
-        );
-        let mut n = (index + 11) % 12;
-        if n == 0 {
-            n = 12;
-        }
-
-        first_day_jds[index].num = n as u8;
-        first_day_jds[index].jd = jd;
-    }
-
-    first_day_jds
-}
-
-/**
- * 根据节气计算是否有闰月
- * @param lunarMonth
- * 从前一年冬至开始的15个农历月的信息
- * @param jdsMiddleSolarTerm
- * 从前一年冬至开始的中气的儒略日,最后一中气是此年的冬至
- * 前一年冬至点所在农历月计为m_0
- * 此年冬至点所在农历月之前的一个农历月计为m_1
- * 从m_0数到m_1，如果有13个农历月，则置闰
- */
-pub fn calc_leap_month(
-    lunar_month: [LunarMonth; 15],
-    jds_middle_solar_term: [f64; 13],
-) -> [LunarMonth; 15] {
-    // 找出区间[m_0, m_1]间的农历月
-    // 只计数[m_0, m_1)之间的月数，
-    // 此月数等于13，则置闰
-
-    let n = lunar_month
-        .iter()
-        .filter(|x| x.jd <= jds_middle_solar_term[12])
-        .count()
-        - 1;
-
-    if n == 12 {
-        return lunar_month;
-    }
-    let mut lunar_month = lunar_month;
-    for i in 0..lunar_month.len() - 1 {
-        // 月中有中气:true，无中气:false
-        let mut middle_solar_term = false;
-        // len(jdsMiddleSolarTerm) - 1是因为排除今年的冬至点
-        // jdsMiddleSolarTerm 的最后一个值即是今年的冬至点
-        for j in 0..jds_middle_solar_term.len() - 1 {
-            if lunar_month[i].jd < jds_middle_solar_term[j]
-                && jds_middle_solar_term[j] < lunar_month[i + 1].jd
-            {
-                middle_solar_term = true;
-                break;
-            }
-        }
-        if !middle_solar_term {
-            lunar_month[i].is_leap = true;
-            for j in i..lunar_month.len() {
-                lunar_month[j].num -= 1;
-                if lunar_month[j].num == 0 {
-                    lunar_month[j].num = 12;
-                }
-            }
-            break;
-        }
-    }
-    lunar_month
 }
