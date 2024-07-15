@@ -21,7 +21,7 @@ pub struct LunarCalendar {
     pub lunar_year: GanZhi,
 
     /// 农历月，以正月、二月、......、十月、冬月、腊月表示
-    #[schema(example="正月", value_type=String, example="正月")]
+    #[cfg_attr(feature = "swagger", schema(value_type = String, example="正月"))]
     pub lunar_month: LunarMonth,
 
     /// 农历日，以初一、初二、……、二十九、三十表示
