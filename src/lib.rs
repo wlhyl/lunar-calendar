@@ -279,7 +279,7 @@ pub fn lunar_calendar(
 
     swe_set_ephe_path(ephe_path);
 
-    let xx: [f64; 6] = match swe_calc_ut(current_jd, &Body::SeSun, Default::default()) {
+    let xx: [f64; 6] = match swe_calc_ut(current_jd, Body::SeSun, Default::default()) {
         Ok(xx) => xx,
         Err(e) => {
             swe_close();
@@ -341,7 +341,7 @@ pub fn lunar_calendar(
     let solar_term_jd0 = newton_iteration(current_jd, |jd| {
         swe_set_ephe_path(ephe_path);
 
-        let xx: [f64; 6] = match swe_calc_ut(jd, &Body::SeSun, Default::default()) {
+        let xx: [f64; 6] = match swe_calc_ut(jd, Body::SeSun, Default::default()) {
             Ok(xx) => xx,
             Err(e) => {
                 swe_close();
@@ -383,7 +383,7 @@ pub fn lunar_calendar(
     let solar_term_jd1 = newton_iteration(solar_term_jd0 + 15.0, |jd| {
         swe_set_ephe_path(ephe_path);
 
-        let xx: [f64; 6] = match swe_calc_ut(jd, &Body::SeSun, Default::default()) {
+        let xx: [f64; 6] = match swe_calc_ut(jd, Body::SeSun, Default::default()) {
             Ok(xx) => xx,
             Err(e) => {
                 swe_close();
@@ -437,7 +437,7 @@ mod tests {
     fn test_convert_to_lunar_calendar2022_1_10_22_5_3() {
         // "测试公历转农历"
         // "将2022-1-10 22:5:3转换为农历
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
         let ephe_path = env::var("EPHE_PATH")
             .expect("没设置 EPHE_PATH 环境变量，可在.env文件中设置或export EPHE_PATH=...");
         let year = 2022;
@@ -612,7 +612,7 @@ mod tests {
     fn test_convert_to_lunar_calendar2022_2_3_22_5_3() {
         // 测试公历转农历
         // 将2022-3-3 22:5:3转换为农历
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
         let ephe_path = env::var("EPHE_PATH")
             .expect("没设置 EPHE_PATH 环境变量，可在.env文件中设置或export EPHE_PATH=...");
         let year = 2022;
@@ -785,7 +785,7 @@ mod tests {
     fn test_convert_to_lunar_calendar2022_3_10_11_5_3() {
         // 测试公历转农历
         // 将2022-3-10 11:5:3转换为农历
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
         let ephe_path = env::var("EPHE_PATH").expect(
             "没设置 EPHE_PATH 环境变量，可在.env
 文件中设置或export EPHE_PATH=...",
@@ -961,7 +961,7 @@ mod tests {
     fn test_convert_to_lunar_calendar2020_6_10_11_5_3() {
         // 测试公历转农历
         // 将2020-6-10 11:5:3转换为农历，此年闰四月
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
         let ephe_path = env::var("EPHE_PATH")
             .expect("没设置 EPHE_PATH 环境变量，可在.env文件中设置或export EPHE_PATH=...");
         let year = 2020;
@@ -1135,7 +1135,7 @@ mod tests {
     fn test_convert_to_lunar_calendar2020_7_3_16_0_0() {
         // 测试公历转农历
         // 将2020-7-3 16:0:0转换为农历，此年闰四月，此日是：农历五月13
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
         let ephe_path = env::var("EPHE_PATH")
             .expect("没设置 EPHE_PATH 环境变量，可在.env文件中设置或export EPHE_PATH=...");
         let year = 2020;

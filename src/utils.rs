@@ -1,4 +1,4 @@
-use swe::{swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path, Body, Calendar};
+use swe::{Body, Calendar, swe_calc_ut, swe_close, swe_degnorm, swe_julday, swe_set_ephe_path};
 
 use crate::mathutl::{mod180, newton_iteration};
 
@@ -40,7 +40,7 @@ fn sun_long_to_jd(x: f64, angle: f64, ephe_path: &str) -> Result<f64, String> {
     let f = |jd: f64| {
         swe_set_ephe_path(ephe_path);
 
-        let xx: Result<[f64; 6], String> = swe_calc_ut(jd, &Body::SeSun, Default::default());
+        let xx: Result<[f64; 6], String> = swe_calc_ut(jd, Body::SeSun, Default::default());
         swe_close();
 
         match xx {
@@ -84,7 +84,7 @@ fn get_new_moon_jd(jd: f64, ephe_path: &str) -> Result<f64, String> {
 
         // let xx: Result<[f64; 6], String> = swe_calc_ut(jd, Planet::SUN, Default::default());
 
-        let sun_posi = match swe_calc_ut(jd, &Body::SeSun, Default::default()) {
+        let sun_posi = match swe_calc_ut(jd, Body::SeSun, Default::default()) {
             Ok(xx) => xx[0],
             Err(s) => {
                 swe_close();
@@ -93,7 +93,7 @@ fn get_new_moon_jd(jd: f64, ephe_path: &str) -> Result<f64, String> {
         };
 
         // 计算月亮黄道经度
-        let moon_posi = match swe_calc_ut(jd, &Body::SeMoon, Default::default()) {
+        let moon_posi = match swe_calc_ut(jd, Body::SeMoon, Default::default()) {
             Ok(xx) => xx[0],
             Err(s) => {
                 swe_close();
